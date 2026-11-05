@@ -181,6 +181,7 @@ int main(void)
 	  USART2_SendString(message);
 
 	  LL_mDelay(MEASUREMENT_PERIOD_MS);
+  }
   /* USER CODE END 3 */
 }
 
