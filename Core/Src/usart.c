@@ -74,6 +74,18 @@ void MX_USART2_UART_Init(void)
 }
 
 /* USER CODE BEGIN 1 */
+/* Sends zero-terminated string via USART2 (polling) */
+void USART2_SendString(const char *text)
+{
+	while(*text != '\0')
+	{
+		while(!LL_USART_IsActiveFlag_TXE(USART2));
+		LL_USART_TransmitData8(USART2, (uint8_t)*text);
+		text++;
+	}
+	/* wait until last byte is sent */
+	while(!LL_USART_IsActiveFlag_TC(USART2));
+}
 
 /* USER CODE END 1 */
 
