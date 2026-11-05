@@ -178,6 +178,50 @@ uint8_t i2c_read(uint8_t dev_address, uint8_t reg_address, uint8_t *data, uint8_
 	return I2C_OK;
 }
 
+/*
+ * Writes "length" bytes without register address: START, address+W, data..., STOP
+ */
+uint8_t i2c_write_raw(uint8_t dev_address, uint8_t *data, uint8_t length)
+{
+	if(length == 0U) return I2C_ERROR;
+
+	LL_I2C_HandleTransfer(I2C1, dev_address, LL_I2C_ADDRSLAVE_7BIT, length,
+						  LL_I2C_MODE_AUTOEND, LL_I2C_GENERATE_START_WRITE);
+
+	for(uint8_t i = 0; i < length; i++)
+	{
+		if(i2c_wait_flag(I2C_ISR_TXIS) != I2C_OK) { i2c_recover(); return I2C_ERROR; }
+		LL_I2C_TransmitData8(I2C1, data[i]);
+	}
+
+	if(i2c_wait_flag(I2C_ISR_STOPF) != I2C_OK) { i2c_recover(); return I2C_ERROR; }
+	LL_I2C_ClearFlag_STOP(I2C1);
+
+	return I2C_OK;
+}
+
+/*
+ * Reads "length" bytes without register address: START, address+R, data..., STOP
+ */
+uint8_t i2c_read_raw(uint8_t dev_address, uint8_t *data, uint8_t length)
+{
+	if(length == 0U) return I2C_ERROR;
+
+	LL_I2C_HandleTransfer(I2C1, dev_address, LL_I2C_ADDRSLAVE_7BIT, length,
+						  LL_I2C_MODE_AUTOEND, LL_I2C_GENERATE_START_READ);
+
+	for(uint8_t i = 0; i < length; i++)
+	{
+		if(i2c_wait_flag(I2C_ISR_RXNE) != I2C_OK) { i2c_recover(); return I2C_ERROR; }
+		data[i] = LL_I2C_ReceiveData8(I2C1);
+	}
+
+	if(i2c_wait_flag(I2C_ISR_STOPF) != I2C_OK) { i2c_recover(); return I2C_ERROR; }
+	LL_I2C_ClearFlag_STOP(I2C1);
+
+	return I2C_OK;
+}
+
 /* Single byte write */
 uint8_t i2c_write_byte(uint8_t dev_address, uint8_t reg_address, uint8_t value)
 {

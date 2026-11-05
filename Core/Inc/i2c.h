@@ -53,6 +53,9 @@ uint8_t i2c_write(uint8_t dev_address, uint8_t reg_address, uint8_t *data, uint8
 uint8_t i2c_read(uint8_t dev_address, uint8_t reg_address, uint8_t *data, uint8_t length);
 uint8_t i2c_write_byte(uint8_t dev_address, uint8_t reg_address, uint8_t value);
 uint8_t i2c_read_byte(uint8_t dev_address, uint8_t reg_address, uint8_t *value);
+/* Transfers without register address (for devices controlled by commands, e.g. AHT10) */
+uint8_t i2c_write_raw(uint8_t dev_address, uint8_t *data, uint8_t length);
+uint8_t i2c_read_raw(uint8_t dev_address, uint8_t *data, uint8_t length);
 
 /* USER CODE END Prototypes */
 
