@@ -39,6 +39,20 @@ extern "C" {
 void MX_I2C1_Init(void);
 
 /* USER CODE BEGIN Prototypes */
+/*
+ * I2C master read/write functions (I2C1, polling).
+ * dev_address - 8-bit slave address (7-bit address shifted left, e.g. 0xBE)
+ * reg_address - register address in slave device
+ * data, length - data buffer and number of bytes (multi-byte transfer is done in ONE I2C transaction)
+ * return value - I2C_OK (0) or I2C_ERROR (1)
+ */
+#define I2C_OK			0U
+#define I2C_ERROR		1U
+
+uint8_t i2c_write(uint8_t dev_address, uint8_t reg_address, uint8_t *data, uint8_t length);
+uint8_t i2c_read(uint8_t dev_address, uint8_t reg_address, uint8_t *data, uint8_t length);
+uint8_t i2c_write_byte(uint8_t dev_address, uint8_t reg_address, uint8_t value);
+uint8_t i2c_read_byte(uint8_t dev_address, uint8_t reg_address, uint8_t *value);
 
 /* USER CODE END Prototypes */
 
