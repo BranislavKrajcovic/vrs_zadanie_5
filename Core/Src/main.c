@@ -26,8 +26,9 @@
 /* USER CODE BEGIN Includes */
 #include "hts221.h"
 #include "lps25hb.h"
+#include "bmp180.h"
+#include "aht10.h"
 #include <stdio.h>
-
 /* USER CODE END Includes */
 
 /* Private typedef -----------------------------------------------------------*/
@@ -37,10 +38,19 @@
 
 /* Private define ------------------------------------------------------------*/
 /* USER CODE BEGIN PD */
-#define MEASUREMENT_PERIOD_MS		100U	//CSV data sent with 10 Hz
+/*
+ * Used sensors:
+ * SENSORS_IKS01A1      - X-NUCLEO-IKS01A1 board: HTS221 (temperature, humidity) + LPS25HB (pressure)
+ * SENSORS_BMP180_AHT10 - modules BMP180 (pressure) + AHT10 (temperature, humidity)
+ */
+#define SENSORS_IKS01A1				1
+#define SENSORS_BMP180_AHT10		2
+#define SENSORS_USED				SENSORS_BMP180_AHT10
+
+#define MEASUREMENT_PERIOD_MS		100U	//CSV data period (+ time of measurement)
+#define AHT10_MEASURE_EVERY			10U		//AHT10 measured every 10th period (~1 s, limits self-heating)
 #define REFERENCE_SAMPLES			20U		//number of pressure samples averaged for reference (ground) pressure
 #define INIT_RETRY_PERIOD_MS		1000U
-
 /* USER CODE END PD */
 
 /* Private macro -------------------------------------------------------------*/
@@ -53,16 +63,16 @@
 /* USER CODE BEGIN PV */
 /* reference (ground) pressure for relative altitude [hPa] */
 static float reference_pressure = 0.0f;
-
 /* USER CODE END PV */
 
 /* Private function prototypes -----------------------------------------------*/
 void SystemClock_Config(void);
 /* USER CODE BEGIN PFP */
 static void Sensors_Init(void);
+static uint8_t Read_Pressure(float *pressure);
 static float Measure_ReferencePressure(void);
+static void Delay_ms(uint32_t ms);
 static void Format_Value(char *buffer, float value, uint8_t int_digits, uint8_t decimals);
-
 /* USER CODE END PFP */
 
 /* Private user code ---------------------------------------------------------*/
@@ -110,8 +120,13 @@ int main(void)
   MX_USART2_UART_Init();
   /* USER CODE BEGIN 2 */
   /* I2C functions are registered as callbacks - sensor drivers do not use i2c.c directly */
+#if SENSORS_USED == SENSORS_IKS01A1
   HTS221_RegisterCallbacks(i2c_read, i2c_write);
   LPS25HB_RegisterCallbacks(i2c_read, i2c_write);
+#else
+  BMP180_RegisterCallbacks(i2c_read, i2c_write, Delay_ms);
+  AHT10_RegisterCallbacks(i2c_write_raw, i2c_read_raw, Delay_ms);
+#endif
 
   Sensors_Init();
 
@@ -121,7 +136,9 @@ int main(void)
   float temperature = 0.0f, humidity = 0.0f, pressure = 0.0f, altitude = 0.0f;
   char temperature_str[12], humidity_str[12], pressure_str[12], altitude_str[12];
   char message[64];
-
+#if SENSORS_USED == SENSORS_BMP180_AHT10
+  uint8_t aht10_counter = 0;
+#endif
   /* USER CODE END 2 */
 
   /* Infinite loop */
@@ -132,12 +149,27 @@ int main(void)
 
     /* USER CODE BEGIN 3 */
 	  /* read measured values (previous value is kept if reading fails) */
+#if SENSORS_USED == SENSORS_IKS01A1
 	  HTS221_ReadTemperature(&temperature);
 	  HTS221_ReadHumidity(&humidity);
-	  LPS25HB_ReadPressure(&pressure);
+#else
+	  if(aht10_counter == 0U)
+	  {
+		  AHT10_Measure();		//one measurement gives humidity and temperature
+	  }
+	  aht10_counter = (aht10_counter + 1U) % AHT10_MEASURE_EVERY;
+
+	  AHT10_ReadTemperature(&temperature);
+	  AHT10_ReadHumidity(&humidity);
+#endif
+	  Read_Pressure(&pressure);
 
 	  /* post processing - relative altitude from pressure */
+#if SENSORS_USED == SENSORS_IKS01A1
 	  altitude = LPS25HB_CalculateRelativeAltitude(pressure, reference_pressure);
+#else
+	  altitude = BMP180_CalculateRelativeAltitude(pressure, reference_pressure);
+#endif
 
 	  /* CSV: temperature [degC] xx.x, humidity [%] xx, pressure [hPa] xxxx.xx, altitude [m] xx.xx */
 	  Format_Value(temperature_str, temperature, 2, 1);
@@ -149,7 +181,6 @@ int main(void)
 	  USART2_SendString(message);
 
 	  LL_mDelay(MEASUREMENT_PERIOD_MS);
-  }
   /* USER CODE END 3 */
 }
 
@@ -187,29 +218,58 @@ void SystemClock_Config(void)
 }
 
 /* USER CODE BEGIN 4 */
+/* Delay function registered as callback for sensor drivers */
+static void Delay_ms(uint32_t ms)
+{
+	LL_mDelay(ms);
+}
+
 /* Initialization of both sensors, repeated until successful (error is reported via USART) */
 static void Sensors_Init(void)
 {
-	uint8_t hts221_ok = 0, lps25hb_ok = 0;
+	uint8_t humidity_ok = 0, pressure_ok = 0;
 
-	while(!hts221_ok || !lps25hb_ok)
+	while(!humidity_ok || !pressure_ok)
 	{
-		if(!hts221_ok)
+#if SENSORS_USED == SENSORS_IKS01A1
+		if(!humidity_ok)
 		{
-			hts221_ok = (HTS221_Init() == HTS221_OK);
-			if(!hts221_ok) USART2_SendString("HTS221 init error\r\n");
+			humidity_ok = (HTS221_Init() == HTS221_OK);
+			if(!humidity_ok) USART2_SendString("HTS221 init error\r\n");
 		}
-		if(!lps25hb_ok)
+		if(!pressure_ok)
 		{
-			lps25hb_ok = (LPS25HB_Init() == LPS25HB_OK);
-			if(!lps25hb_ok) USART2_SendString("LPS25HB init error\r\n");
+			pressure_ok = (LPS25HB_Init() == LPS25HB_OK);
+			if(!pressure_ok) USART2_SendString("LPS25HB init error\r\n");
 		}
-		if(!hts221_ok || !lps25hb_ok)
+#else
+		if(!humidity_ok)
+		{
+			humidity_ok = (AHT10_Init() == AHT10_OK);
+			if(!humidity_ok) USART2_SendString("AHT10 init error\r\n");
+		}
+		if(!pressure_ok)
+		{
+			pressure_ok = (BMP180_Init() == BMP180_OK);
+			if(!pressure_ok) USART2_SendString("BMP180 init error\r\n");
+		}
+#endif
+		if(!humidity_ok || !pressure_ok)
 		{
 			LL_mDelay(INIT_RETRY_PERIOD_MS);
 		}
 	}
-	USART2_SendString("Sensors HTS221 and LPS25HB initialized\r\n");
+	USART2_SendString("Sensors initialized\r\n");
+}
+
+/* Pressure from used pressure sensor [hPa] */
+static uint8_t Read_Pressure(float *pressure)
+{
+#if SENSORS_USED == SENSORS_IKS01A1
+	return LPS25HB_ReadPressure(pressure);
+#else
+	return BMP180_ReadPressure(pressure);
+#endif
 }
 
 /* Average of several pressure samples - reference pressure for relative altitude */
@@ -222,7 +282,7 @@ static float Measure_ReferencePressure(void)
 
 	for(uint8_t i = 0; i < REFERENCE_SAMPLES; i++)
 	{
-		if(LPS25HB_ReadPressure(&p) == LPS25HB_OK)
+		if(Read_Pressure(&p) == 0U)
 		{
 			sum += p;
 			count++;
@@ -262,7 +322,6 @@ static void Format_Value(char *buffer, float value, uint8_t int_digits, uint8_t 
 		sprintf(buffer, "%s%0*u", (scaled < 0) ? "-" : "", int_digits, (unsigned int)abs_value);
 	}
 }
-
 /* USER CODE END 4 */
 
 /**
