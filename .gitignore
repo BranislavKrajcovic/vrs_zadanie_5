@@ -1,0 +1,15 @@
+# Build output
+Debug/
+Release/
+*.o
+*.d
+*.elf
+*.map
+*.list
+*.su
+*.cyclo
+
+# IDE generated / local files
+.metadata/
+.settings/language.settings.xml
+*.launch
