@@ -69,6 +69,7 @@ static float reference_pressure = 0.0f;
 void SystemClock_Config(void);
 /* USER CODE BEGIN PFP */
 static void Sensors_Init(void);
+static void I2C_Scan(void);
 static uint8_t Read_Pressure(float *pressure);
 static float Measure_ReferencePressure(void);
 static void Delay_ms(uint32_t ms);
@@ -127,6 +128,8 @@ int main(void)
   BMP180_RegisterCallbacks(i2c_read, i2c_write, Delay_ms);
   AHT10_RegisterCallbacks(i2c_write_raw, i2c_read_raw, Delay_ms);
 #endif
+
+  I2C_Scan();		//diagnostics - list of devices on I2C bus
 
   Sensors_Init();
 
@@ -219,6 +222,26 @@ void SystemClock_Config(void)
 }
 
 /* USER CODE BEGIN 4 */
+/* Diagnostics - finds all devices answering on I2C bus and prints their 7-bit addresses */
+static void I2C_Scan(void)
+{
+	char text[32];
+	uint8_t dummy;
+	uint8_t found = 0;
+
+	LL_mDelay(50);		//sensors power on
+	USART2_SendString("I2C scan:");
+	for(uint8_t address = 0x08U; address < 0x78U; address++)
+	{
+		if(i2c_read_raw((uint8_t)(address << 1), &dummy, 1U) == I2C_OK)
+		{
+			sprintf(text, " 0x%02X", address);
+			USART2_SendString(text);
+			found++;
+		}
+	}
+	USART2_SendString(found ? "\r\n" : " no device\r\n");
+}
 /* Delay function registered as callback for sensor drivers */
 static void Delay_ms(uint32_t ms)
 {
@@ -247,7 +270,14 @@ static void Sensors_Init(void)
 		if(!humidity_ok)
 		{
 			humidity_ok = (AHT10_Init() == AHT10_OK);
-			if(!humidity_ok) USART2_SendString("AHT10 init error\r\n");
+			if(!humidity_ok)
+			{
+				char text[48];
+				uint8_t status = 0xFF;
+				uint8_t result = i2c_read_raw(AHT10_DEVICE_ADDRESS, &status, 1U);
+				sprintf(text, "AHT10 init error (read %s, status 0x%02X)\r\n", result ? "NACK" : "OK", status);
+				USART2_SendString(text);
+			}
 		}
 		if(!pressure_ok)
 		{

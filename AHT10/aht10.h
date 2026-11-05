@@ -2,6 +2,8 @@
  * aht10.h
  *
  * Driver for AHT10 - digital relative humidity and temperature sensor (Aosong).
+ * Compatible also with AHT20 (same address, measurement command and data format,
+ * only initialization command is different).
  *
  * AHT10 has no registers - it is controlled by commands. Measurement returns humidity
  * and temperature together, so one measurement (AHT10_Measure) is followed by separate
@@ -26,6 +28,7 @@
 
 /* Commands */
 #define AHT10_CMD_INIT				0xE1U		//+ 0x08, 0x00 (calibration enable)
+#define AHT20_CMD_INIT				0xBEU		//+ 0x08, 0x00 (AHT20 version of init command)
 #define AHT10_CMD_MEASURE			0xACU		//+ 0x33, 0x00 (trigger measurement)
 #define AHT10_CMD_SOFT_RESET		0xBAU
 #define AHT10_INIT_PARAM1			0x08U

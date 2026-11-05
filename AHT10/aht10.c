@@ -68,27 +68,44 @@ uint8_t AHT10_Init(void)
 
 	/*
 	 * 1. check connection - AHT10 has no WHO_AM_I register, the sensor is identified
-	 *    by answering on its I2C address (both possible addresses are tried)
+	 *    by answering (status byte) on its I2C address - both possible addresses are tried
 	 */
 	aht10_address = AHT10_DEVICE_ADDRESS;
-	if(AHT10_SoftReset() != AHT10_OK)
+	if(AHT10_ReadStatus(&status) != AHT10_OK)
 	{
 		aht10_address = AHT10_DEVICE_ADDRESS_ALT;
-		if(AHT10_SoftReset() != AHT10_OK)
+		if(AHT10_ReadStatus(&status) != AHT10_OK)
 		{
 			return AHT10_ERROR;
 		}
 	}
 
-	/* 2. configuration - initialization command (enables calibration coefficients) */
-	if(AHT10_WriteCommand(AHT10_CMD_INIT, AHT10_INIT_PARAM1, AHT10_INIT_PARAM2) != AHT10_OK)
+	/* soft reset - sensor starts from defined state (not supported by all versions, result ignored) */
+	AHT10_SoftReset();
+
+	/*
+	 * 2. configuration - initialization command (loads calibration coefficients).
+	 *    Not needed if sensor already reports calibrated state. AHT10 uses command 0xE1,
+	 *    AHT20 uses 0xBE (and does not accept 0xE1), so both are tried.
+	 */
+	if(AHT10_ReadStatus(&status) != AHT10_OK) return AHT10_ERROR;
+
+	if((status & AHT10_STATUS_CAL_ENABLED) == 0U)
 	{
-		return AHT10_ERROR;
+		if(AHT10_WriteCommand(AHT10_CMD_INIT, AHT10_INIT_PARAM1, AHT10_INIT_PARAM2) != AHT10_OK)
+		{
+			if(AHT10_WriteCommand(AHT20_CMD_INIT, AHT10_INIT_PARAM1, AHT10_INIT_PARAM2) != AHT10_OK)
+			{
+				return AHT10_ERROR;
+			}
+		}
+		aht10_delay(AHT10_INIT_DELAY_MS);
+
+		if(AHT10_ReadStatus(&status) != AHT10_OK) return AHT10_ERROR;
 	}
-	aht10_delay(AHT10_INIT_DELAY_MS);
 
 	/* 3. status must report calibrated sensor (CAL bit = 1) */
-	if(AHT10_ReadStatus(&status) != AHT10_OK || (status & AHT10_STATUS_CAL_ENABLED) == 0U)
+	if((status & AHT10_STATUS_CAL_ENABLED) == 0U)
 	{
 		return AHT10_ERROR;
 	}
